@@ -515,7 +515,10 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
         </div>
       </div>
     </>
-  );afunction CreatePostScreen({ currentUser, onBack, onPublished }) {
+  );
+}
+
+function CreatePostScreen({ currentUser, onBack, onPublished }) {
   const [type, setType] = useState("");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
