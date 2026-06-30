@@ -199,8 +199,15 @@ function avatarColor(id="") {
   return colors[n % colors.length];
 }
 
-function Avatar({ name, userId, size=28 }) {
+function Avatar({ name, userId, avatarUrl, size=28 }) {
   const color = avatarColor(userId||name||"");
+  if (avatarUrl) {
+    return (
+      <img src={avatarUrl} alt={name} className="avatar" style={{
+        width: size, height: size, borderRadius: size*0.28, objectFit: "cover"
+      }}/>
+    );
+  }
   return (
     <div className="avatar" style={{
       width: size, height: size, background: color+"22", color,
@@ -223,7 +230,7 @@ function PostCard({ post, onClick }) {
       <div className="looking-tags">{lf.map(l=><span key={l} className="looking-tag">+ {l}</span>)}</div>
       <div style={{borderTop:`1px solid ${t.border}`,marginTop:12,paddingTop:10}}>
         <div className="post-author">
-          <Avatar name={post.profiles?.name||"?"} userId={post.user_id} size={28}/>
+          <Avatar name={post.profiles?.name||"?"} userId={post.user_id} avatarUrl={post.profiles?.avatar_url} size={28}/>
           <div>
             <div className="author-name">{post.profiles?.name||"Builder"}</div>
             <div className="author-role">{post.profiles?.role||""}</div>
@@ -292,22 +299,38 @@ function AuthScreen({ onAuth }) {
 }
 
 function OnboardScreen({ user, onComplete }) {
-  const [step, setStep] = useState(1);
-  const [role, setRole] = useState("");
-  const [bio, setBio] = useState("");
+  const [step, setStep]       = useState(1);
+  const [role, setRole]       = useState("");
+  const [bio, setBio]         = useState("");
   const [skillInput, setSkillInput] = useState("");
-  const [skills, setSkills] = useState([]);
+  const [skills, setSkills]   = useState([]);
   const [loading, setLoading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const addSkill = () => {
     const s = skillInput.trim();
     if (s && !skills.includes(s)) { setSkills([...skills, s]); setSkillInput(""); }
   };
 
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/avatar.${ext}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (!error) {
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      setAvatarUrl(data.publicUrl + "?t=" + Date.now());
+    }
+    setUploading(false);
+  };
+
   const finish = async () => {
     setLoading(true);
-    await supabase.from("profiles").upsert({ id: user.id, role, bio, skills });
-    onComplete({ role, bio, skills });
+    await supabase.from("profiles").upsert({ id: user.id, role, bio, skills, avatar_url: avatarUrl });
+    onComplete({ role, bio, skills, avatar_url: avatarUrl });
     setLoading(false);
   };
 
@@ -334,6 +357,19 @@ function OnboardScreen({ user, onComplete }) {
         <>
           <div className="onboard-title">What are you building?</div>
           <div className="onboard-sub">Quick bio and skills. You can update this anytime.</div>
+          <div className="form-group" style={{textAlign:"center"}}>
+            <label htmlFor="avatar-upload-onboard" style={{cursor:"pointer", display:"inline-block"}}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="avatar" style={{width:80,height:80,borderRadius:20,objectFit:"cover",border:`2px solid ${t.border}`}}/>
+              ) : (
+                <div style={{width:80,height:80,borderRadius:20,background:t.elevated,border:`1.5px dashed ${t.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,color:t.muted}}>
+                  {uploading ? "..." : "+"}
+                </div>
+              )}
+              <div style={{fontSize:11,color:t.accent,marginTop:6,fontWeight:600}}>{avatarUrl?"Change photo":"Add photo"}</div>
+            </label>
+            <input id="avatar-upload-onboard" type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
+          </div>
           <div className="form-group">
             <label className="form-label">Bio</label>
             <textarea className="form-textarea" placeholder="I'm building ___. Looking for ___." value={bio} onChange={e=>setBio(e.target.value)} style={{minHeight:70}}/>
@@ -434,7 +470,7 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
           <div className="detail-desc">{post.description}</div>
           <div className="detail-section-label">Builder</div>
           <div className="detail-author-card">
-            <Avatar name={profile.name||"?"} userId={post.user_id} size={44}/>
+            <Avatar name={profile.name||"?"} userId={post.user_id} avatarUrl={profile.avatar_url} size={44}/>
             <div>
               <div className="detail-author-name">{profile.name||"Builder"}</div>
               <div className="detail-author-role">{profile.role||""}</div>
@@ -479,9 +515,7 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
         </div>
       </div>
     </>
-  );
-}
-function CreatePostScreen({ currentUser, onBack, onPublished }) {
+  );afunction CreatePostScreen({ currentUser, onBack, onPublished }) {
   const [type, setType] = useState("");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -576,7 +610,7 @@ function NotificationsScreen({ currentUser }) {
       if (!myPosts||myPosts.length===0) { setLoading(false); return; }
       const postIds = myPosts.map(p=>p.id);
       const { data } = await supabase.from("interactions")
-        .select("*, profiles(name,role), posts(title)")
+        .select("*, profiles(name,role,avatar_url), posts(title)")
         .in("post_id", postIds)
         .order("created_at",{ascending:false});
       setNotifs(data||[]);
@@ -624,10 +658,11 @@ function NotificationsScreen({ currentUser }) {
   );
 }
 
-function ProfileScreen({ currentUser, profile, onLogout }) {
-  const [posts, setPosts] = useState([]);
+function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
+  const [posts, setPosts]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [connects, setConnects] = useState(0);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(()=>{
     const load = async () => {
@@ -642,6 +677,22 @@ function ProfileScreen({ currentUser, profile, onLogout }) {
     load();
   },[currentUser.id]);
 
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${currentUser.id}/avatar.${ext}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (!error) {
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = data.publicUrl + "?t=" + Date.now();
+      await supabase.from("profiles").update({ avatar_url: url }).eq("id", currentUser.id);
+      onAvatarUpdated(url);
+    }
+    setUploading(false);
+  };
+
   const skills = Array.isArray(profile?.skills) ? profile.skills : [];
 
   return (
@@ -653,9 +704,17 @@ function ProfileScreen({ currentUser, profile, onLogout }) {
       <div className="content">
         <div className="profile-screen">
           <div className="profile-hero">
-            <div className="profile-avatar-large" style={{background:t.accentDim,color:t.accent}}>
-              {initials(profile?.name||currentUser.email||"?")}
-            </div>
+            <label htmlFor="avatar-upload-profile" style={{cursor:"pointer", display:"inline-block", position:"relative"}}>
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="avatar" style={{width:72,height:72,borderRadius:18,objectFit:"cover",margin:"0 auto 12px",display:"block"}}/>
+              ) : (
+                <div className="profile-avatar-large" style={{background:t.accentDim,color:t.accent}}>
+                  {uploading ? "..." : initials(profile?.name||currentUser.email||"?")}
+                </div>
+              )}
+              <div style={{fontSize:10,color:t.accent,marginTop:-6,marginBottom:6,fontWeight:600,textAlign:"center"}}>{uploading?"Uploading...":"Change photo"}</div>
+            </label>
+            <input id="avatar-upload-profile" type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
             <div className="profile-name">{profile?.name||currentUser.email}</div>
             {profile?.role && <div className="profile-role-badge" style={{background:t.accentDim,color:t.accent}}>{profile.role}</div>}
             {profile?.bio && <div className="profile-bio">{profile.bio}</div>}
@@ -716,7 +775,7 @@ export default function App() {
   const loadPosts = useCallback(async () => {
     setPostsLoading(true);
     const { data } = await supabase.from("posts")
-      .select("*, profiles(name,role,bio)")
+      .select("*, profiles(name,role,bio,avatar_url)")
       .order("created_at", { ascending: false });
     setPosts(data||[]);
     setPostsLoading(false);
@@ -795,7 +854,7 @@ export default function App() {
       ) : tab==="notifs" ? (
         <NotificationsScreen currentUser={currentUser}/>
       ) : (
-        <ProfileScreen currentUser={currentUser} profile={profile} onLogout={handleLogout}/>
+        <ProfileScreen currentUser={currentUser} profile={profile} onLogout={handleLogout} onAvatarUpdated={(url)=>setProfile(prev=>({...prev, avatar_url:url}))}/>
       )}
 
       {!selectedPost && (
