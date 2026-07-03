@@ -1,4 +1,4 @@
-yimport { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 
 const fontLink = document.createElement("link");
@@ -667,6 +667,7 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
   const [loading, setLoading] = useState(true);
   const [connects, setConnects] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
 
   useEffect(()=>{
     const load = async () => {
@@ -683,18 +684,28 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
 
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+    setAvatarError("");
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `${currentUser.id}/avatar.${ext}`;
-    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (!error) {
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${currentUser.id}/avatar.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = data.publicUrl + "?t=" + Date.now();
-      await supabase.from("profiles").update({ avatar_url: url }).eq("id", currentUser.id);
+
+      const { error: dbError } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", currentUser.id);
+      if (dbError) throw dbError;
+
       onAvatarUpdated(url);
+    } catch (err) {
+      setAvatarError(err?.message || "Couldn't upload photo. Please try again.");
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const skills = Array.isArray(profile?.skills) ? profile.skills : [];
@@ -719,6 +730,7 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
               <div style={{fontSize:10,color:t.accent,marginTop:-6,marginBottom:6,fontWeight:600,textAlign:"center"}}>{uploading?"Uploading...":"Change photo"}</div>
             </label>
             <input id="avatar-upload-profile" type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
+            {avatarError && <div className="error-msg" style={{textAlign:"left"}}>{avatarError}</div>}
             <div className="profile-name">{profile?.name||currentUser.email}</div>
             {profile?.role && <div className="profile-role-badge" style={{background:t.accentDim,color:t.accent}}>{profile.role}</div>}
             {profile?.bio && <div className="profile-bio">{profile.bio}</div>}
