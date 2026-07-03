@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+yimport { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 
 const fontLink = document.createElement("link");
@@ -320,7 +320,9 @@ function OnboardScreen({ user, onComplete }) {
     const ext = file.name.split(".").pop();
     const path = `${user.id}/avatar.${ext}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (!error) {
+console.log("Upload error:", error, "Path:", path);
+if (!error) {
+
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       setAvatarUrl(data.publicUrl + "?t=" + Date.now());
     }
