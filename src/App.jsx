@@ -34,7 +34,7 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .post-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; color: ${t.text}; margin-bottom: 6px; line-height: 1.3; }
 .post-desc { font-size: 13px; color: ${t.muted}; line-height: 1.55; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .post-author { display: flex; align-items: center; gap: 8px; }
-.avatar { border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0; }
+.Avatar { border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0; }
 .author-name { font-size: 12px; font-weight: 500; color: ${t.text}; }
 .author-role { font-size: 11px; color: ${t.muted}; }
 .looking-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -193,23 +193,23 @@ function initials(name="") {
   return name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 }
 
-function avatarColor(id="") {
+function AvatarColor(id="") {
   const colors = ["#6C63FF","#22C55E","#F59E0B","#F87171","#38BDF8","#A78BFA"];
   let n = 0; for (const c of id) n += c.charCodeAt(0);
   return colors[n % colors.length];
 }
 
-function Avatar({ name, userId, avatarUrl, size=28 }) {
-  const color = avatarColor(userId||name||"");
-  if (avatarUrl) {
+function Avatar({ name, userId, AvatarUrl, size=28 }) {
+  const color = AvatarColor(userId||name||"");
+  if (AvatarUrl) {
     return (
-      <img src={avatarUrl} alt={name} className="avatar" style={{
+      <img src={AvatarUrl} alt={name} className="Avatar" style={{
         width: size, height: size, borderRadius: size*0.28, objectFit: "cover"
       }}/>
     );
   }
   return (
-    <div className="avatar" style={{
+    <div className="Avatar" style={{
       width: size, height: size, background: color+"22", color,
       borderRadius: size*0.28, fontSize: size*0.38
     }}>{initials(name)}</div>
