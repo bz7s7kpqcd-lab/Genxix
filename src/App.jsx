@@ -125,7 +125,7 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .notif-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; margin-top: 6px; }
 .profile-screen { padding: 0 16px 24px; }
 .profile-hero { text-align: center; padding: 24px 0 20px; }
-.profile-avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
+.profile-Avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
 .profile-name { font-size: 22px; font-weight: 700; }
 .profile-role-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 6px; }
 .profile-bio { font-size: 13px; color: ${t.muted}; margin-top: 10px; line-height: 1.55; }
