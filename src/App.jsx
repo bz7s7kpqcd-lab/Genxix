@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 
 const fontLink = document.createElement("link");
@@ -34,7 +34,7 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .post-title { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; color: ${t.text}; margin-bottom: 6px; line-height: 1.3; }
 .post-desc { font-size: 13px; color: ${t.muted}; line-height: 1.55; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .post-author { display: flex; align-items: center; gap: 8px; }
-.Avatar { border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0; }
+.avatar { border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0; }
 .author-name { font-size: 12px; font-weight: 500; color: ${t.text}; }
 .author-role { font-size: 11px; color: ${t.muted}; }
 .looking-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -125,7 +125,7 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .notif-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; margin-top: 6px; }
 .profile-screen { padding: 0 16px 24px; }
 .profile-hero { text-align: center; padding: 24px 0 20px; }
-.profile-Avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
+.profile-avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
 .profile-name { font-size: 22px; font-weight: 700; }
 .profile-role-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 6px; }
 .profile-bio { font-size: 13px; color: ${t.muted}; margin-top: 10px; line-height: 1.55; }
@@ -149,6 +149,9 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .logout-btn { font-size: 12px; color: ${t.muted}; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
 .logout-btn:hover { color: #F87171; }
 select.form-input { appearance: none; }
+.gate-banner { background: ${t.elevated}; border-top: 1px solid ${t.border}; padding: 14px 20px; text-align: center; position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; z-index: 99; }
+.gate-banner-text { font-size: 13px; color: ${t.muted}; margin-bottom: 8px; }
+.gate-banner-btn { background: ${t.accent}; color: white; border: none; border-radius: 10px; padding: 10px 24px; font-size: 13px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; cursor: pointer; }
 `;
 
 const styleEl = document.createElement("style");
@@ -193,23 +196,23 @@ function initials(name="") {
   return name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 }
 
-function AvatarColor(id="") {
+function avatarColor(id="") {
   const colors = ["#6C63FF","#22C55E","#F59E0B","#F87171","#38BDF8","#A78BFA"];
   let n = 0; for (const c of id) n += c.charCodeAt(0);
   return colors[n % colors.length];
 }
 
-function Avatar({ name, userId, AvatarUrl, size=28 }) {
-  const color = AvatarColor(userId||name||"");
-  if (AvatarUrl) {
+function Avatar({ name, userId, avatarUrl, size=28 }) {
+  const color = avatarColor(userId||name||"");
+  if (avatarUrl) {
     return (
-      <img src={AvatarUrl} alt={name} className="Avatar" style={{
+      <img src={avatarUrl} alt={name} className="avatar" style={{
         width: size, height: size, borderRadius: size*0.28, objectFit: "cover"
       }}/>
     );
   }
   return (
-    <div className="Avatar" style={{
+    <div className="avatar" style={{
       width: size, height: size, background: color+"22", color,
       borderRadius: size*0.28, fontSize: size*0.38
     }}>{initials(name)}</div>
@@ -237,6 +240,15 @@ function PostCard({ post, onClick }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GateBanner({ onLogin }) {
+  return (
+    <div className="gate-banner">
+      <div className="gate-banner-text">Join Genxix to post, co-build, invest and connect</div>
+      <button className="gate-banner-btn" onClick={onLogin}>Sign up free →</button>
     </div>
   );
 }
@@ -320,9 +332,7 @@ function OnboardScreen({ user, onComplete }) {
     const ext = file.name.split(".").pop();
     const path = `${user.id}/avatar.${ext}`;
     const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-console.log("Upload error:", error, "Path:", path);
-if (!error) {
-
+    if (!error) {
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       setAvatarUrl(data.publicUrl + "?t=" + Date.now());
     }
@@ -402,14 +412,15 @@ if (!error) {
   );
 }
 
-function FeedScreen({ posts, loading, onPostClick, onCreateClick }) {
+function FeedScreen({ posts, loading, onPostClick, onCreateClick, isGuest }) {
   return (
     <>
       <div className="topbar">
         <div className="topbar-logo">Gen<span>xix</span></div>
-        <button onClick={onCreateClick} style={{background:t.accent,border:"none",borderRadius:10,padding:"8px 16px",color:"white",fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Post</button>
+        {!isGuest && <button onClick={onCreateClick} style={{background:t.accent,border:"none",borderRadius:10,padding:"8px 16px",color:"white",fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Post</button>}
+        {isGuest && <button onClick={onCreateClick} style={{background:"transparent",border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 16px",color:t.text,fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>Log in</button>}
       </div>
-      <div className="content">
+      <div className="content" style={{paddingBottom: isGuest ? "140px" : "80px"}}>
         <div className="feed">
           <div className="section-header"><div className="section-label">Latest from builders</div></div>
           {loading ? <div className="loading"><div className="spinner"/></div>
@@ -427,16 +438,18 @@ function FeedScreen({ posts, loading, onPostClick, onCreateClick }) {
   );
 }
 
-function PostDetailScreen({ post, currentUser, onBack, showToast }) {
+function PostDetailScreen({ post, currentUser, onBack, showToast, onLoginRequired }) {
   const [sent, setSent] = useState({});
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const tc = TYPE_CONFIG[post.type]||TYPE_CONFIG.idea;
   const lf = Array.isArray(post.looking_for)?post.looking_for:[];
-  const isOwn = post.user_id === currentUser.id;
+  const isOwn = currentUser && post.user_id === currentUser.id;
+  const isGuest = !currentUser;
   const profile = post.profiles || {};
 
   const interact = async (type, message="") => {
+    if (!currentUser) { onLoginRequired(); return; }
     if (sent[type]) return;
     setLoading(true);
     const { error } = await supabase.from("interactions").insert({
@@ -487,7 +500,7 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
               <div style={{fontSize:14,color:t.text,marginBottom:24,fontWeight:600}}>{post.monetization_type}</div>
             </>
           )}
-          {!isOwn ? (
+          {!isOwn && (
             <>
               <div className="detail-section-label">Connect</div>
               <div className="action-grid">
@@ -495,21 +508,27 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
                   <div key={a.type} className={`action-btn ${sent[a.type]?"sent":""}`} onClick={()=>!loading&&interact(a.type)}>
                     <div className="action-emoji">{sent[a.type]?"✅":a.emoji}</div>
                     <div className="action-label">{sent[a.type]?"Sent":a.label}</div>
-                    <div className="action-sublabel">{sent[a.type]?"Request delivered":a.sub}</div>
+                    <div className="action-sublabel">{isGuest?"Sign up to connect":sent[a.type]?"Request delivered":a.sub}</div>
                   </div>
                 ))}
-                <div className="action-btn">
+                <div className="action-btn" onClick={()=>interact("message")}>
                   <div className="action-emoji">💬</div>
                   <div className="action-label">Message</div>
-                  <div className="action-sublabel">Direct message</div>
+                  <div className="action-sublabel">{isGuest?"Sign up to message":"Direct message"}</div>
                 </div>
               </div>
-              <div className="msg-input-wrap">
-                <input className="form-input" placeholder="Send a message..." value={msg} onChange={e=>setMsg(e.target.value)}/>
-                <button className="msg-send-btn" onClick={()=>{if(msg.trim()){interact("message",msg);setMsg("");}}} disabled={loading}>Send</button>
-              </div>
+              {!isGuest && (
+                <div className="msg-input-wrap">
+                  <input className="form-input" placeholder="Send a message..." value={msg} onChange={e=>setMsg(e.target.value)}/>
+                  <button className="msg-send-btn" onClick={()=>{if(msg.trim()){interact("message",msg);setMsg("");}}} disabled={loading}>Send</button>
+                </div>
+              )}
+              {isGuest && (
+                <button className="btn-primary" onClick={onLoginRequired} style={{marginTop:8}}>Sign up to connect →</button>
+              )}
             </>
-          ) : (
+          )}
+          {isOwn && (
             <div style={{background:t.elevated,border:`1px solid ${t.border}`,borderRadius:12,padding:16,textAlign:"center"}}>
               <div style={{fontSize:13,color:t.muted}}>This is your post. Share Genxix to get collaborators.</div>
             </div>
@@ -519,6 +538,7 @@ function PostDetailScreen({ post, currentUser, onBack, showToast }) {
     </>
   );
 }
+
 function CreatePostScreen({ currentUser, onBack, onPublished }) {
   const [type, setType] = useState("");
   const [title, setTitle] = useState("");
@@ -667,7 +687,7 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
   const [loading, setLoading] = useState(true);
   const [connects, setConnects] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [avatarError, setAvatarError] = useState("");
+  const fileRef = useRef(null);
 
   useEffect(()=>{
     const load = async () => {
@@ -684,28 +704,20 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
 
   const handlePhoto = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = "";
     if (!file) return;
-    setAvatarError("");
     setUploading(true);
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `${currentUser.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-
+    const ext = file.name.split(".").pop();
+    const path = `${currentUser.id}/avatar.${ext}`;
+    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (error) {
+      alert("Upload failed: " + error.message);
+    } else {
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = data.publicUrl + "?t=" + Date.now();
-
-      const { error: dbError } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", currentUser.id);
-      if (dbError) throw dbError;
-
+      await supabase.from("profiles").update({ avatar_url: url }).eq("id", currentUser.id);
       onAvatarUpdated(url);
-    } catch (err) {
-      setAvatarError(err?.message || "Couldn't upload photo. Please try again.");
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
   };
 
   const skills = Array.isArray(profile?.skills) ? profile.skills : [];
@@ -719,18 +731,17 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
       <div className="content">
         <div className="profile-screen">
           <div className="profile-hero">
-            <label htmlFor="avatar-upload-profile" style={{cursor:"pointer", display:"inline-block", position:"relative"}}>
+            <div onClick={()=>fileRef.current?.click()} style={{cursor:"pointer"}}>
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="avatar" style={{width:72,height:72,borderRadius:18,objectFit:"cover",margin:"0 auto 12px",display:"block"}}/>
+                <img src={profile.avatar_url} alt="avatar" style={{width:72,height:72,borderRadius:18,objectFit:"cover",margin:"0 auto 4px",display:"block"}}/>
               ) : (
                 <div className="profile-avatar-large" style={{background:t.accentDim,color:t.accent}}>
                   {uploading ? "..." : initials(profile?.name||currentUser.email||"?")}
                 </div>
               )}
-              <div style={{fontSize:10,color:t.accent,marginTop:-6,marginBottom:6,fontWeight:600,textAlign:"center"}}>{uploading?"Uploading...":"Change photo"}</div>
-            </label>
-            <input id="avatar-upload-profile" type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
-            {avatarError && <div className="error-msg" style={{textAlign:"left"}}>{avatarError}</div>}
+              <div style={{fontSize:10,color:t.accent,marginBottom:8,fontWeight:600,textAlign:"center"}}>{uploading?"Uploading...":"Change photo"}</div>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
             <div className="profile-name">{profile?.name||currentUser.email}</div>
             {profile?.role && <div className="profile-role-badge" style={{background:t.accentDim,color:t.accent}}>{profile.role}</div>}
             {profile?.bio && <div className="profile-bio">{profile.bio}</div>}
@@ -804,14 +815,14 @@ export default function App() {
         setCurrentUser(session.user);
         const p = await loadProfile(session.user.id);
         setScreen(p?.role ? "app" : "onboard");
-        loadPosts();
       } else {
-        setScreen("auth");
+        setScreen("guest");
       }
+      loadPosts();
     };
     init();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) { setCurrentUser(null); setScreen("auth"); }
+      if (!session) { setCurrentUser(null); setProfile(null); setScreen("guest"); }
     });
     return () => subscription.unsubscribe();
   }, [loadProfile, loadPosts]);
@@ -823,20 +834,18 @@ export default function App() {
     } else {
       const p = await loadProfile(user.id);
       setScreen(p?.role ? "app" : "onboard");
-      loadPosts();
     }
   };
 
   const handleOnboard = (data) => {
     setProfile(prev=>({...prev,...data}));
     setScreen("app");
-    loadPosts();
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setCurrentUser(null); setProfile(null); setPosts([]);
-    setScreen("auth");
+    setCurrentUser(null); setProfile(null);
+    setScreen("guest");
   };
 
   const handlePublished = () => {
@@ -844,6 +853,8 @@ export default function App() {
     setTab("feed");
     loadPosts();
   };
+
+  const goToAuth = () => setScreen("auth");
 
   if (screen==="loading") return (
     <div className="app" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
@@ -859,12 +870,14 @@ export default function App() {
   if (screen==="auth") return <div className="app"><AuthScreen onAuth={handleAuth}/></div>;
   if (screen==="onboard") return <div className="app"><OnboardScreen user={currentUser} onComplete={handleOnboard}/></div>;
 
+  const isGuest = screen === "guest";
+
   return (
     <div className="app">
       {selectedPost ? (
-        <PostDetailScreen post={selectedPost} currentUser={currentUser} onBack={()=>setSelectedPost(null)} showToast={showToast}/>
-      ) : tab==="feed" ? (
-        <FeedScreen posts={posts} loading={postsLoading} onPostClick={setSelectedPost} onCreateClick={()=>setTab("create")}/>
+        <PostDetailScreen post={selectedPost} currentUser={currentUser} onBack={()=>setSelectedPost(null)} showToast={showToast} onLoginRequired={goToAuth}/>
+      ) : tab==="feed" || isGuest ? (
+        <FeedScreen posts={posts} loading={postsLoading} onPostClick={setSelectedPost} onCreateClick={isGuest ? goToAuth : ()=>setTab("create")} isGuest={isGuest}/>
       ) : tab==="create" ? (
         <CreatePostScreen currentUser={currentUser} onBack={()=>setTab("feed")} onPublished={handlePublished}/>
       ) : tab==="notifs" ? (
@@ -873,7 +886,17 @@ export default function App() {
         <ProfileScreen currentUser={currentUser} profile={profile} onLogout={handleLogout} onAvatarUpdated={(url)=>setProfile(prev=>({...prev, avatar_url:url}))}/>
       )}
 
-      {!selectedPost && (
+      {isGuest ? (
+        <>
+          <GateBanner onLogin={goToAuth}/>
+          <nav className="nav">
+            <div className="nav-item active">{Icons.feed}Discover</div>
+            <div className="nav-item" onClick={goToAuth}>{Icons.create}Post</div>
+            <div className="nav-item" onClick={goToAuth}>{Icons.notifs}Inbox</div>
+            <div className="nav-item" onClick={goToAuth}>{Icons.profile}Profile</div>
+          </nav>
+        </>
+      ) : !selectedPost && (
         <nav className="nav">
           {[
             {id:"feed",   icon:Icons.feed,    label:"Discover"},
