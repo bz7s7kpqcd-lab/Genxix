@@ -115,14 +115,19 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .msg-input-wrap { display: flex; gap: 8px; margin-top: 8px; }
 .msg-input-wrap .form-input { flex: 1; }
 .msg-send-btn { background: ${t.accent}; border: none; border-radius: 10px; padding: 0 16px; color: white; font-weight: 700; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; }
+.msg-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .notif-screen { padding: 0 16px; }
-.notif-card { background: ${t.surface}; border: 1px solid ${t.border}; border-radius: 12px; padding: 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start; }
+.notif-card { background: ${t.surface}; border: 1px solid ${t.border}; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
+.notif-card:hover { border-color: ${t.accentGlow}; }
+.notif-card-row { display: flex; gap: 12px; align-items: flex-start; }
 .notif-card.unread { border-color: ${t.accentGlow}; }
 .notif-dot { width: 8px; height: 8px; border-radius: 50%; background: ${t.accent}; margin-top: 6px; flex-shrink: 0; }
 .notif-dot.read { background: transparent; border: 1px solid ${t.border}; }
 .notif-text { font-size: 13px; color: ${t.text}; line-height: 1.5; }
 .notif-time { font-size: 11px; color: ${t.muted}; margin-top: 4px; }
 .notif-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; margin-top: 6px; }
+.notif-reply-box { margin-top: 12px; padding-top: 12px; border-top: 1px solid ${t.border}; }
+.notif-reply-sent { font-size: 12px; color: ${t.success}; font-weight: 600; margin-top: 10px; }
 .profile-screen { padding: 0 16px 24px; }
 .profile-hero { text-align: center; padding: 24px 0 20px; }
 .profile-avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
@@ -624,9 +629,13 @@ function CreatePostScreen({ currentUser, onBack, onPublished }) {
   );
 }
 
-function NotificationsScreen({ currentUser }) {
+function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [repliedIds, setRepliedIds] = useState({});
 
   useEffect(()=>{
     const load = async () => {
@@ -634,7 +643,7 @@ function NotificationsScreen({ currentUser }) {
       if (!myPosts||myPosts.length===0) { setLoading(false); return; }
       const postIds = myPosts.map(p=>p.id);
       const { data } = await supabase.from("interactions")
-        .select("*, profiles(name,role,avatar_url), posts(title)")
+        .select("*, profiles(name,role,avatar_url), posts(*)")
         .in("post_id", postIds)
         .order("created_at",{ascending:false});
       setNotifs(data||[]);
@@ -642,6 +651,30 @@ function NotificationsScreen({ currentUser }) {
     };
     load();
   },[currentUser.id]);
+
+  const toggleOpen = (n) => {
+    setOpenId(prev => prev===n.id ? null : n.id);
+    setReplyText("");
+    if (!n.read) {
+      supabase.from("interactions").update({ read: true }).eq("id", n.id).then(()=>{});
+      setNotifs(prev => prev.map(x => x.id===n.id ? {...x, read:true} : x));
+    }
+  };
+
+  const sendReply = async (n) => {
+    const text = replyText.trim();
+    if (!text || sending) return;
+    setSending(true);
+    const { error } = await supabase.from("interactions").insert({
+      user_id: currentUser.id, post_id: n.post_id, type: "message", message: text
+    });
+    setSending(false);
+    if (!error) {
+      setRepliedIds(prev=>({...prev,[n.id]:true}));
+      setReplyText("");
+      showToast && showToast("Reply sent!");
+    }
+  };
 
   return (
     <>
@@ -661,17 +694,57 @@ function NotificationsScreen({ currentUser }) {
               </div>
             ) : notifs.map(n=>{
               const tc = NOTIF_TYPE[n.type]||NOTIF_TYPE.message;
+              const isOpen = openId === n.id;
               return (
-                <div key={n.id} className={`notif-card ${!n.read?"unread":""}`}>
-                  <div className={`notif-dot ${n.read?"read":""}`}/>
-                  <div>
-                    <div className="notif-text">
-                      <strong>{n.profiles?.name||"A builder"}</strong> ({n.profiles?.role||"Builder"}) on <strong>"{n.posts?.title||"your post"}"</strong>
-                      {n.message && <div style={{marginTop:4,fontSize:12,color:t.muted,fontStyle:"italic"}}>"{n.message}"</div>}
+                <div key={n.id} className={`notif-card ${!n.read?"unread":""}`} onClick={()=>toggleOpen(n)}>
+                  <div className="notif-card-row">
+                    <div className={`notif-dot ${n.read?"read":""}`}/>
+                    <div style={{flex:1}}>
+                      <div className="notif-text">
+                        <strong>{n.profiles?.name||"A builder"}</strong> ({n.profiles?.role||"Builder"}) on <strong>"{n.posts?.title||"your post"}"</strong>
+                        {n.message && <div style={{marginTop:4,fontSize:12,color:t.muted,fontStyle:"italic"}}>"{n.message}"</div>}
+                      </div>
+                      <span className="notif-type-badge" style={{background:tc.bg,color:tc.color}}>{tc.label}</span>
+                      <div className="notif-time">{timeAgo(n.created_at)}</div>
                     </div>
-                    <span className="notif-type-badge" style={{background:tc.bg,color:tc.color}}>{tc.label}</span>
-                    <div className="notif-time">{timeAgo(n.created_at)}</div>
                   </div>
+                  {isOpen && (
+                    <div className="notif-reply-box" onClick={e=>e.stopPropagation()}>
+                      {n.posts && (
+                        <div
+                          onClick={()=>onOpenPost && onOpenPost(n.posts)}
+                          style={{background:t.elevated,border:`1px solid ${t.border}`,borderRadius:10,padding:12,marginBottom:12,cursor:"pointer"}}
+                        >
+                          <span className={`post-type-badge ${(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).className}`}>
+                            {(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).emoji} {(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).label}
+                          </span>
+                          <div style={{fontSize:13,fontWeight:600,marginTop:6}}>{n.posts.title}</div>
+                          {n.posts.description && (
+                            <div style={{fontSize:12,color:t.muted,marginTop:4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
+                              {n.posts.description}
+                            </div>
+                          )}
+                          <div style={{fontSize:11,color:t.accent,fontWeight:600,marginTop:8}}>View full post →</div>
+                        </div>
+                      )}
+                      {repliedIds[n.id] ? (
+                        <div className="notif-reply-sent">✓ Reply sent</div>
+                      ) : (
+                        <div className="msg-input-wrap" style={{marginTop:0}}>
+                          <input
+                            className="form-input"
+                            placeholder={`Reply to ${n.profiles?.name||"them"}...`}
+                            value={replyText}
+                            onChange={e=>setReplyText(e.target.value)}
+                            onKeyDown={e=>e.key==="Enter"&&sendReply(n)}
+                          />
+                          <button className="msg-send-btn" onClick={()=>sendReply(n)} disabled={sending||!replyText.trim()}>
+                            {sending?"...":"Send"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -856,6 +929,10 @@ export default function App() {
 
   const goToAuth = () => setScreen("auth");
 
+  const openPostFromNotif = (post) => {
+    setSelectedPost(post);
+  };
+
   if (screen==="loading") return (
     <div className="app" style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
       <div>
@@ -881,7 +958,7 @@ export default function App() {
       ) : tab==="create" ? (
         <CreatePostScreen currentUser={currentUser} onBack={()=>setTab("feed")} onPublished={handlePublished}/>
       ) : tab==="notifs" ? (
-        <NotificationsScreen currentUser={currentUser}/>
+        <NotificationsScreen currentUser={currentUser} showToast={showToast} onOpenPost={openPostFromNotif}/>
       ) : (
         <ProfileScreen currentUser={currentUser} profile={profile} onLogout={handleLogout} onAvatarUpdated={(url)=>setProfile(prev=>({...prev, avatar_url:url}))}/>
       )}
