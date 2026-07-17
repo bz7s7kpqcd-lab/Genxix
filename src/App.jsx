@@ -117,17 +117,17 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .msg-send-btn { background: ${t.accent}; border: none; border-radius: 10px; padding: 0 16px; color: white; font-weight: 700; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; }
 .msg-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .notif-screen { padding: 0 16px; }
-.notif-card { background: ${t.surface}; border: 1px solid ${t.border}; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
-.notif-card:hover { border-color: ${t.accentGlow}; }
-.notif-card-row { display: flex; gap: 12px; align-items: flex-start; }
-.notif-card.unread { border-color: ${t.accentGlow}; }
-.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: ${t.accent}; margin-top: 6px; flex-shrink: 0; }
-.notif-dot.read { background: transparent; border: 1px solid ${t.border}; }
-.notif-text { font-size: 13px; color: ${t.text}; line-height: 1.5; }
-.notif-time { font-size: 11px; color: ${t.muted}; margin-top: 4px; }
-.notif-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; margin-top: 6px; }
+.thread-card { background: ${t.surface}; border: 1px solid ${t.border}; border-left: 3px solid transparent; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s; }
+.thread-card.unread { border-color: ${t.border}; }
+.thread-header { display: flex; gap: 10px; align-items: flex-start; }
+.thread-meta { flex: 1; min-width: 0; }
+.thread-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.thread-name { font-size: 13px; font-weight: 600; color: ${t.text}; }
+.thread-time { font-size: 11px; color: ${t.muted}; flex-shrink: 0; }
+.thread-post-line { font-size: 11px; color: ${t.accent}; font-weight: 600; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-preview { font-size: 12px; color: ${t.muted}; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-unread-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .notif-reply-box { margin-top: 12px; padding-top: 12px; border-top: 1px solid ${t.border}; }
-.notif-reply-sent { font-size: 12px; color: ${t.success}; font-weight: 600; margin-top: 10px; }
 .chat-thread { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .chat-bubble { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; }
 .chat-bubble.theirs { align-self: flex-start; background: ${t.elevated}; border: 1px solid ${t.border}; border-bottom-left-radius: 4px; }
@@ -463,7 +463,7 @@ function PostDetailScreen({ post, currentUser, onBack, showToast, onLoginRequire
     if (sent[type]) return;
     setLoading(true);
     const { error } = await supabase.from("interactions").insert({
-      user_id: currentUser.id, post_id: post.id, type, message
+      user_id: currentUser.id, post_id: post.id, recipient_id: post.user_id, type, message
     });
     if (!error) {
       setSent(prev=>({...prev,[type]:true}));
@@ -634,48 +634,80 @@ function CreatePostScreen({ currentUser, onBack, onPublished }) {
   );
 }
 
+function groupThreads(rows, myId) {
+  const map = {};
+  rows.forEach(r => {
+    const otherId = r.user_id === myId ? r.recipient_id : r.user_id;
+    if (!otherId) return;
+    const key = `${r.post_id}-${otherId}`;
+    if (!map[key]) {
+      map[key] = { key, postId: r.post_id, post: r.posts, otherUser: null, messages: [], askType: null };
+    }
+    map[key].messages.push(r);
+    if (r.user_id !== myId) {
+      if (!map[key].askType) map[key].askType = r.type;
+      if (r.profiles) map[key].otherUser = { id: r.user_id, ...r.profiles };
+    }
+  });
+  const threads = Object.values(map).filter(th => th.otherUser).map(th => {
+    th.messages.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+    th.latest = th.messages[th.messages.length-1];
+    th.unread = th.messages.some(m => m.recipient_id===myId && !m.read);
+    if (!th.askType) th.askType = "message";
+    return th;
+  });
+  threads.sort((a,b)=> new Date(b.latest.created_at) - new Date(a.latest.created_at));
+  return threads;
+}
+
 function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
-  const [notifs, setNotifs] = useState([]);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openId, setOpenId] = useState(null);
+  const [openKey, setOpenKey] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
-  const [repliedMsgs, setRepliedMsgs] = useState({});
 
   useEffect(()=>{
     const load = async () => {
-      const { data: myPosts } = await supabase.from("posts").select("id,title").eq("user_id", currentUser.id);
+      const { data: myPosts } = await supabase.from("posts").select("id").eq("user_id", currentUser.id);
       if (!myPosts||myPosts.length===0) { setLoading(false); return; }
       const postIds = myPosts.map(p=>p.id);
       const { data } = await supabase.from("interactions")
         .select("*, profiles(name,role,avatar_url), posts(*)")
         .in("post_id", postIds)
-        .order("created_at",{ascending:false});
-      setNotifs(data||[]);
+        .order("created_at",{ascending:true});
+      setRows(data||[]);
       setLoading(false);
     };
     load();
   },[currentUser.id]);
 
-  const toggleOpen = (n) => {
-    setOpenId(prev => prev===n.id ? null : n.id);
+  const threads = groupThreads(rows, currentUser.id);
+
+  const toggleOpen = (th) => {
+    const opening = openKey !== th.key;
+    setOpenKey(opening ? th.key : null);
     setReplyText("");
-    if (!n.read) {
-      supabase.from("interactions").update({ read: true }).eq("id", n.id).then(()=>{});
-      setNotifs(prev => prev.map(x => x.id===n.id ? {...x, read:true} : x));
+    if (opening) {
+      const unreadIds = th.messages.filter(m=>m.recipient_id===currentUser.id && !m.read).map(m=>m.id);
+      if (unreadIds.length>0) {
+        supabase.from("interactions").update({ read: true }).in("id", unreadIds).then(()=>{});
+        setRows(prev => prev.map(r => unreadIds.includes(r.id) ? {...r, read:true} : r));
+      }
     }
   };
 
-  const sendReply = async (n) => {
+  const sendReply = async (th) => {
     const text = replyText.trim();
     if (!text || sending) return;
     setSending(true);
-    const { error } = await supabase.from("interactions").insert({
-      user_id: currentUser.id, post_id: n.post_id, type: "message", message: text
-    });
+    const { data, error } = await supabase.from("interactions")
+      .insert({ user_id: currentUser.id, post_id: th.postId, recipient_id: th.otherUser.id, type: "message", message: text })
+      .select("*, profiles(name,role,avatar_url), posts(*)")
+      .single();
     setSending(false);
-    if (!error) {
-      setRepliedMsgs(prev=>({...prev,[n.id]:text}));
+    if (!error && data) {
+      setRows(prev=>[...prev, data]);
       setReplyText("");
       showToast && showToast("Reply sent!");
     }
@@ -685,76 +717,78 @@ function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
     <>
       <div className="topbar">
         <div className="topbar-logo">Gen<span>xix</span></div>
-        <div style={{fontSize:12,color:t.muted}}>{notifs.filter(n=>!n.read).length>0?`${notifs.filter(n=>!n.read).length} new`:""}</div>
+        <div style={{fontSize:12,color:t.muted}}>{threads.filter(th=>th.unread).length>0?`${threads.filter(th=>th.unread).length} new`:""}</div>
       </div>
       <div className="content">
         <div className="notif-screen">
-          <div className="section-header" style={{marginBottom:10}}><div className="section-label">Collaboration requests</div></div>
+          <div className="section-header" style={{marginBottom:10}}><div className="section-label">Requests</div></div>
           {loading ? <div className="loading"><div className="spinner"/></div>
-            : notifs.length===0 ? (
+            : threads.length===0 ? (
               <div className="empty-state">
                 <div className="empty-emoji">🔔</div>
                 <div className="empty-title">No requests yet</div>
                 <div className="empty-sub">When someone co-builds, invests, or messages about your posts, it shows here.</div>
               </div>
-            ) : notifs.map(n=>{
-              const tc = NOTIF_TYPE[n.type]||NOTIF_TYPE.message;
-              const isOpen = openId === n.id;
+            ) : threads.map(th=>{
+              const typeInfo = NOTIF_TYPE[th.askType]||NOTIF_TYPE.message;
+              const postTc = TYPE_CONFIG[th.post?.type]||TYPE_CONFIG.idea;
+              const isOpen = openKey === th.key;
+              const lastMine = th.latest.user_id === currentUser.id;
               return (
-                <div key={n.id} className={`notif-card ${!n.read?"unread":""}`} onClick={()=>toggleOpen(n)}>
-                  <div className="notif-card-row">
-                    <div className={`notif-dot ${n.read?"read":""}`}/>
-                    <div style={{flex:1}}>
-                      <div className="notif-text">
-                        <strong>{n.profiles?.name||"A builder"}</strong> ({n.profiles?.role||"Builder"}) on <strong>"{n.posts?.title||"your post"}"</strong>
-                        {n.message && <div style={{marginTop:4,fontSize:12,color:t.muted,fontStyle:"italic"}}>"{n.message}"</div>}
+                <div key={th.key} className={`thread-card ${th.unread?"unread":""}`}
+                  style={{borderLeftColor: th.unread ? typeInfo.color : "transparent"}}
+                  onClick={()=>toggleOpen(th)}>
+                  <div className="thread-header">
+                    <Avatar name={th.otherUser?.name||"?"} userId={th.otherUser?.id} avatarUrl={th.otherUser?.avatar_url} size={36}/>
+                    <div className="thread-meta">
+                      <div className="thread-name-row">
+                        <span className="thread-name">{th.otherUser?.name||"A builder"}</span>
+                        <span className="thread-time">{timeAgo(th.latest.created_at)}</span>
                       </div>
-                      <span className="notif-type-badge" style={{background:tc.bg,color:tc.color}}>{tc.label}</span>
-                      <div className="notif-time">{timeAgo(n.created_at)}</div>
+                      <div className="thread-post-line">{postTc.emoji} {th.post?.title||"your post"}</div>
+                      <div className="thread-preview">{lastMine?"You: ":""}{th.latest.message || typeInfo.label}</div>
                     </div>
+                    {th.unread && <div className="thread-unread-dot" style={{background:typeInfo.color}}/>}
                   </div>
+
                   {isOpen && (
                     <div className="notif-reply-box" onClick={e=>e.stopPropagation()}>
-                      {n.posts && (
+                      {th.post && (
                         <div
-                          onClick={()=>onOpenPost && onOpenPost(n.posts)}
+                          onClick={()=>onOpenPost && onOpenPost(th.post)}
                           style={{background:t.elevated,border:`1px solid ${t.border}`,borderRadius:10,padding:12,marginBottom:12,cursor:"pointer"}}
                         >
-                          <span className={`post-type-badge ${(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).className}`}>
-                            {(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).emoji} {(TYPE_CONFIG[n.posts.type]||TYPE_CONFIG.idea).label}
-                          </span>
-                          <div style={{fontSize:13,fontWeight:600,marginTop:6}}>{n.posts.title}</div>
-                          {n.posts.description && (
+                          <span className={`post-type-badge ${postTc.className}`}>{postTc.emoji} {postTc.label}</span>
+                          <div style={{fontSize:13,fontWeight:600,marginTop:6}}>{th.post.title}</div>
+                          {th.post.description && (
                             <div style={{fontSize:12,color:t.muted,marginTop:4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
-                              {n.posts.description}
+                              {th.post.description}
                             </div>
                           )}
                           <div style={{fontSize:11,color:t.accent,fontWeight:600,marginTop:8}}>View full post →</div>
                         </div>
                       )}
                       <div className="chat-thread">
-                        {n.message && (
-                          <div>
-                            <div className="chat-bubble theirs">{n.message}</div>
-                            <div className="chat-bubble-meta">{n.profiles?.name||"Them"} · {timeAgo(n.created_at)}</div>
-                          </div>
-                        )}
-                        {repliedMsgs[n.id] && (
-                          <div style={{alignSelf:"flex-end",display:"flex",flexDirection:"column",alignItems:"flex-end"}}>
-                            <div className="chat-bubble mine">{repliedMsgs[n.id]}</div>
-                            <div className="chat-bubble-meta">You · just now</div>
-                          </div>
-                        )}
+                        {th.messages.map(m=>{
+                          const mine = m.user_id === currentUser.id;
+                          const label = m.message || (NOTIF_TYPE[m.type]||NOTIF_TYPE.message).label;
+                          return (
+                            <div key={m.id} style={mine?{alignSelf:"flex-end",display:"flex",flexDirection:"column",alignItems:"flex-end"}:undefined}>
+                              <div className={`chat-bubble ${mine?"mine":"theirs"}`}>{label}</div>
+                              <div className="chat-bubble-meta">{mine?"You":(th.otherUser?.name||"Them")} · {timeAgo(m.created_at)}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                       <div className="msg-input-wrap" style={{marginTop:0}}>
                         <input
                           className="form-input"
-                          placeholder={`Reply to ${n.profiles?.name||"them"}...`}
+                          placeholder={`Reply to ${th.otherUser?.name||"them"}...`}
                           value={replyText}
                           onChange={e=>setReplyText(e.target.value)}
-                          onKeyDown={e=>e.key==="Enter"&&sendReply(n)}
+                          onKeyDown={e=>e.key==="Enter"&&sendReply(th)}
                         />
-                        <button className="msg-send-btn" onClick={()=>sendReply(n)} disabled={sending||!replyText.trim()}>
+                        <button className="msg-send-btn" onClick={()=>sendReply(th)} disabled={sending||!replyText.trim()}>
                           {sending?"...":"Send"}
                         </button>
                       </div>
