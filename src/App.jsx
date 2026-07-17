@@ -128,6 +128,11 @@ h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; }
 .notif-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.06em; margin-top: 6px; }
 .notif-reply-box { margin-top: 12px; padding-top: 12px; border-top: 1px solid ${t.border}; }
 .notif-reply-sent { font-size: 12px; color: ${t.success}; font-weight: 600; margin-top: 10px; }
+.chat-thread { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.chat-bubble { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 13px; line-height: 1.5; }
+.chat-bubble.theirs { align-self: flex-start; background: ${t.elevated}; border: 1px solid ${t.border}; border-bottom-left-radius: 4px; }
+.chat-bubble.mine { align-self: flex-end; background: ${t.accentDim}; border: 1px solid ${t.accentGlow}; color: ${t.text}; border-bottom-right-radius: 4px; }
+.chat-bubble-meta { font-size: 10px; color: ${t.muted}; margin-top: 4px; }
 .profile-screen { padding: 0 16px 24px; }
 .profile-hero { text-align: center; padding: 24px 0 20px; }
 .profile-avatar-large { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin: 0 auto 12px; font-family: 'Space Grotesk', sans-serif; }
@@ -635,7 +640,7 @@ function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
   const [openId, setOpenId] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
-  const [repliedIds, setRepliedIds] = useState({});
+  const [repliedMsgs, setRepliedMsgs] = useState({});
 
   useEffect(()=>{
     const load = async () => {
@@ -670,7 +675,7 @@ function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
     });
     setSending(false);
     if (!error) {
-      setRepliedIds(prev=>({...prev,[n.id]:true}));
+      setRepliedMsgs(prev=>({...prev,[n.id]:text}));
       setReplyText("");
       showToast && showToast("Reply sent!");
     }
