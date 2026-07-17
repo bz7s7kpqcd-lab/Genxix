@@ -732,22 +732,32 @@ function NotificationsScreen({ currentUser, showToast, onOpenPost }) {
                           <div style={{fontSize:11,color:t.accent,fontWeight:600,marginTop:8}}>View full post →</div>
                         </div>
                       )}
-                      {repliedIds[n.id] ? (
-                        <div className="notif-reply-sent">✓ Reply sent</div>
-                      ) : (
-                        <div className="msg-input-wrap" style={{marginTop:0}}>
-                          <input
-                            className="form-input"
-                            placeholder={`Reply to ${n.profiles?.name||"them"}...`}
-                            value={replyText}
-                            onChange={e=>setReplyText(e.target.value)}
-                            onKeyDown={e=>e.key==="Enter"&&sendReply(n)}
-                          />
-                          <button className="msg-send-btn" onClick={()=>sendReply(n)} disabled={sending||!replyText.trim()}>
-                            {sending?"...":"Send"}
-                          </button>
-                        </div>
-                      )}
+                      <div className="chat-thread">
+                        {n.message && (
+                          <div>
+                            <div className="chat-bubble theirs">{n.message}</div>
+                            <div className="chat-bubble-meta">{n.profiles?.name||"Them"} · {timeAgo(n.created_at)}</div>
+                          </div>
+                        )}
+                        {repliedMsgs[n.id] && (
+                          <div style={{alignSelf:"flex-end",display:"flex",flexDirection:"column",alignItems:"flex-end"}}>
+                            <div className="chat-bubble mine">{repliedMsgs[n.id]}</div>
+                            <div className="chat-bubble-meta">You · just now</div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="msg-input-wrap" style={{marginTop:0}}>
+                        <input
+                          className="form-input"
+                          placeholder={`Reply to ${n.profiles?.name||"them"}...`}
+                          value={replyText}
+                          onChange={e=>setReplyText(e.target.value)}
+                          onKeyDown={e=>e.key==="Enter"&&sendReply(n)}
+                        />
+                        <button className="msg-send-btn" onClick={()=>sendReply(n)} disabled={sending||!replyText.trim()}>
+                          {sending?"...":"Send"}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
