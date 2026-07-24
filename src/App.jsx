@@ -422,13 +422,18 @@ function OnboardScreen({ user, onComplete }) {
   );
 }
 
-function FeedScreen({ posts, loading, onPostClick, onCreateClick, isGuest }) {
+function FeedScreen({ posts, loading, onPostClick, onCreateClick, onBuildClick, isGuest }) {
   return (
     <>
       <div className="topbar">
         <div className="topbar-logo">Gen<span>xix</span></div>
-        {!isGuest && <button onClick={onCreateClick} style={{background:t.accent,border:"none",borderRadius:10,padding:"8px 16px",color:"white",fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Post</button>}
-        {isGuest && <button onClick={onCreateClick} style={{background:"transparent",border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 16px",color:t.text,fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>Log in</button>}
+        <div style={{display:"flex",gap:8}}>
+          {!isGuest && (
+            <button onClick={onBuildClick} style={{background:"transparent",border:`1px solid ${t.accentGlow}`,borderRadius:10,padding:"8px 14px",color:t.accent,fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>✨ Build with AI</button>
+          )}
+          {!isGuest && <button onClick={onCreateClick} style={{background:t.accent,border:"none",borderRadius:10,padding:"8px 16px",color:"white",fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Post</button>}
+          {isGuest && <button onClick={onCreateClick} style={{background:"transparent",border:`1px solid ${t.border}`,borderRadius:10,padding:"8px 16px",color:t.text,fontFamily:"'Space Grotesk',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer"}}>Log in</button>}
+        </div>
       </div>
       <div className="content" style={{paddingBottom: isGuest ? "140px" : "80px"}}>
         <div className="feed">
@@ -896,6 +901,154 @@ function ProfileScreen({ currentUser, profile, onLogout, onAvatarUpdated }) {
   );
 }
 
+function FounderAgentScreen({ onBack }) {
+  const [step, setStep] = useState(1);
+  const [answers, setAnswers] = useState({
+    whatBuilding: "", whoFor: "", problem: "", stage: "", goal: ""
+  });
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState("");
+
+  const STAGE_OPTIONS = ["Just an idea", "Prototype", "MVP", "Live product"];
+  const GOAL_OPTIONS = ["Find co-founder", "Validate idea", "Build MVP", "Get users", "Raise funding"];
+
+  const update = (key, val) => setAnswers(prev => ({ ...prev, [key]: val }));
+
+  const canContinue = () => {
+    if (step === 1) return answers.whatBuilding.trim().length > 0;
+    if (step === 2) return answers.whoFor.trim().length > 0;
+    if (step === 3) return answers.problem.trim().length > 0;
+    if (step === 4) return answers.stage.length > 0;
+    if (step === 5) return answers.goal.length > 0;
+    return false;
+  };
+
+  const generate = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(answers),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate report");
+      setReport(data.report);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (report) {
+    return (
+      <>
+        <div className="topbar">
+          <div className="back-btn" onClick={onBack}>← Back</div>
+          <div style={{ width: 40 }} />
+        </div>
+        <div className="content">
+          <div className="detail-screen">
+            <div className="detail-title">Your Startup Report</div>
+            <pre style={{
+              whiteSpace: "pre-wrap", fontSize: 12, color: t.text,
+              background: t.surface, border: `1px solid ${t.border}`,
+              borderRadius: 12, padding: 16, lineHeight: 1.6
+            }}>
+              {JSON.stringify(report, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="topbar">
+        <div className="back-btn" onClick={onBack}>← Back</div>
+        <div style={{ width: 40 }} />
+      </div>
+      <div className="content">
+        <div className="onboard-screen" style={{ paddingTop: 0, minHeight: "auto" }}>
+          <div className="onboard-step">Build with AI · Step {step} of 5</div>
+
+          {loading ? (
+            <div className="loading"><div className="spinner" /></div>
+          ) : error ? (
+            <>
+              <div className="error-msg">{error}</div>
+              <button className="btn-primary" onClick={generate}>Try again →</button>
+            </>
+          ) : step === 1 ? (
+            <>
+              <div className="onboard-title">What are you building?</div>
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <textarea className="form-textarea" placeholder="e.g. A tool that helps freelancers track invoices"
+                  value={answers.whatBuilding} onChange={e => update("whatBuilding", e.target.value)} />
+              </div>
+              <div className="onboard-footer">
+                <button className="btn-primary" onClick={() => setStep(2)} disabled={!canContinue()}>Continue →</button>
+              </div>
+            </>
+          ) : step === 2 ? (
+            <>
+              <div className="onboard-title">Who is it for?</div>
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <input className="form-input" placeholder="e.g. Freelance designers and consultants"
+                  value={answers.whoFor} onChange={e => update("whoFor", e.target.value)} />
+              </div>
+              <div className="onboard-footer">
+                <button className="btn-primary" onClick={() => setStep(3)} disabled={!canContinue()}>Continue →</button>
+              </div>
+            </>
+          ) : step === 3 ? (
+            <>
+              <div className="onboard-title">What problem are you solving?</div>
+              <div className="form-group" style={{ marginTop: 24 }}>
+                <textarea className="form-textarea" placeholder="What's broken or missing today?"
+                  value={answers.problem} onChange={e => update("problem", e.target.value)} />
+              </div>
+              <div className="onboard-footer">
+                <button className="btn-primary" onClick={() => setStep(4)} disabled={!canContinue()}>Continue →</button>
+              </div>
+            </>
+          ) : step === 4 ? (
+            <>
+              <div className="onboard-title">Have you started building?</div>
+              <div className="mono-select" style={{ marginTop: 24 }}>
+                {STAGE_OPTIONS.map(s => (
+                  <div key={s} className={`mono-chip ${answers.stage === s ? "selected" : ""}`}
+                    onClick={() => update("stage", s)}>{s}</div>
+                ))}
+              </div>
+              <div className="onboard-footer">
+                <button className="btn-primary" onClick={() => setStep(5)} disabled={!canContinue()}>Continue →</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="onboard-title">What's your goal?</div>
+              <div className="mono-select" style={{ marginTop: 24 }}>
+                {GOAL_OPTIONS.map(g => (
+                  <div key={g} className={`mono-chip ${answers.goal === g ? "selected" : ""}`}
+                    onClick={() => update("goal", g)}>{g}</div>
+                ))}
+              </div>
+              <div className="onboard-footer">
+                <button className="btn-primary" onClick={generate} disabled={!canContinue()}>Generate my report →</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 const Icons = {
   feed:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
   create:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>,
@@ -911,6 +1064,7 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [showFounderAgent, setShowFounderAgent] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(null), 2500); };
@@ -1002,8 +1156,10 @@ export default function App() {
     <div className="app">
       {selectedPost ? (
         <PostDetailScreen post={selectedPost} currentUser={currentUser} onBack={()=>setSelectedPost(null)} showToast={showToast} onLoginRequired={goToAuth}/>
+      ) : showFounderAgent ? (
+        <FounderAgentScreen onBack={()=>setShowFounderAgent(false)}/>
       ) : tab==="feed" || isGuest ? (
-        <FeedScreen posts={posts} loading={postsLoading} onPostClick={setSelectedPost} onCreateClick={isGuest ? goToAuth : ()=>setTab("create")} isGuest={isGuest}/>
+        <FeedScreen posts={posts} loading={postsLoading} onPostClick={setSelectedPost} onCreateClick={isGuest ? goToAuth : ()=>setTab("create")} onBuildClick={()=>setShowFounderAgent(true)} isGuest={isGuest}/>
       ) : tab==="create" ? (
         <CreatePostScreen currentUser={currentUser} onBack={()=>setTab("feed")} onPublished={handlePublished}/>
       ) : tab==="notifs" ? (
@@ -1022,7 +1178,7 @@ export default function App() {
             <div className="nav-item" onClick={goToAuth}>{Icons.profile}Profile</div>
           </nav>
         </>
-      ) : !selectedPost && (
+      ) : !selectedPost && !showFounderAgent && (
         <nav className="nav">
           {[
             {id:"feed",   icon:Icons.feed,    label:"Discover"},
